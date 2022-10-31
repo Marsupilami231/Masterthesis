@@ -59,12 +59,15 @@ def callback(m, where):
                     if (i, j) in m._sets['A']:
                         # check constraint for time propagation
                         lhs = sol[ind['t'][j, k]]
-                        rhs = sol[ind['t'][i, k]] + sol[ind['x'][i, j, k]] * m._param['v'][k] * m._param['d'][
-                            i, j] + sol[ind['s'][j, k]] * m._param['t_s'][j] - m._param['Tw_max'] * (
+                        rhs = sol[ind['t'][i, k]] + sol[ind['x'][i, j, k]] * m._para['v'][k] * m._para['d'][
+                            i, j] + sol[ind['s'][j, k]] * m._para['t_s'][j] - m._para['Tw_max'] * (
                                       1 - sol[ind['x'][i, j, k]])
                         if lhs < rhs:
-                            m.cbLazy()
-                            print('Constraints not working)')
+                            m.cbLazy(vars[ind['t'][j, k]] >= vars[ind['t'][i, k]] + vars[ind['x'][i, j, k]] *
+                                     m._para['v'][k] * m._para['d'][i, j] + vars[ind['s'][j, k]] * m._para['t_s'][j] -
+                                     m._para['Tw_max'] * (1 - vars[ind['x'][i, j, k]]))
+                            print(f'Constraint {i}, {j}, {k} added.')
+                            m._countLazy +=1
 
     else:
         pass

@@ -185,62 +185,70 @@ labor_cost = gp.quicksum(c_l * (t[i, k] - tw[i, k]) for i in D for k in K)
 depreciation_cost = gp.quicksum(c_d[k] * z[k] for k in K)
 m.setObjective(fuel_cost + labor_cost + depreciation_cost, GRB.MINIMIZE)
 
+m._countLazy = 0
 m.Params.MIPGap = 0.05
+m.Params.LazyConstraints = 1
 m._var_list = var_list
 m._sets = sets
-m._param = parameter
+m._para = parameter
 m.optimize(Classes.callback)
 
-edges = {key: x[key].x for key in x if x[key].x > 0}
-delivered = {key: y[key].x for key in y if y[key].x > 0}
-trucks = [key for key in z if z[key].x > 0]
+print(f'{m._countLazy} lazy contraints were added')
 
-print(fuel_cost.getValue())
-print(labor_cost.getValue())
-print(depreciation_cost.getValue())
 
-for k in K:
-    for (i, j) in A:
-        if x[i, j, k].x > 0:
-            print((i, j, k))
+if m.Status == GRB.OPTIMAL:
+    edges = {key: x[key].x for key in x if x[key].x > 0}
+    delivered = {key: y[key].x for key in y if y[key].x > 0}
+    trucks = [key for key in z if z[key].x > 0]
 
-# print routes
-edges_truck = {k: dict() for k in K}
-for (i, j, k) in edges.keys():
-    edges_truck[k].update({i: j})
+    print(fuel_cost.getValue())
+    print(labor_cost.getValue())
+    print(depreciation_cost.getValue())
 
-routes = dict()
-for k, i in edges_truck.items():
-    if len(i) > 0:
-        s = list(set(D).intersection(list(i.keys())))
-        if len(s) > 0:
-            s = s[0]
-        else:
-            s = list(i.keys())[0]
-        route = [s, i[s]]
-        while i[s] != route[0]:
-            s = i[s]
-            route.append(i[s])
-        routes[k] = route
+    for k in K:
+        for (i, j) in A:
+            if x[i, j, k].x > 0:
+                print((i, j, k))
 
-for k, v in routes.items():
-    print(f'Route {k}: {v}')
+    # print routes
+    edges_truck = {k: dict() for k in K}
+    for (i, j, k) in edges.keys():
+        edges_truck[k].update({i: j})
 
-print(delivered)
-print(trucks)
+    routes = dict()
+    for k, i in edges_truck.items():
+        if len(i) > 0:
+            s = list(set(D).intersection(list(i.keys())))
+            if len(s) > 0:
+                s = s[0]
+            else:
+                s = list(i.keys())[0]
+            route = [s, i[s]]
+            while i[s] != route[0]:
+                s = i[s]
+                route.append(i[s])
+            routes[k] = route
 
-for i in D:
-    plt.scatter(coord[i][0], coord[i][1], c='b')
+    for k, v in routes.items():
+        print(f'Route {k}: {v}')
 
-for i in C:
-    plt.scatter(coord[i][0], coord[i][1], c='g')
+    print(delivered)
+    print(trucks)
 
-for i in N:
-    plt.scatter(coord[i][0], coord[i][1], c='r')
+    for i in D:
+        plt.scatter(coord[i][0], coord[i][1], c='b')
 
-colors = {K[k]: list(mcolors.TABLEAU_COLORS.values())[k] for k in range(len(K))}
+    for i in C:
+        plt.scatter(coord[i][0], coord[i][1], c='g')
 
-for (i, j, k) in edges:
-    plt.plot([coord[i][0], coord[j][0]], [coord[i][1], coord[j][1]], colors[k])
+    for i in N:
+        plt.scatter(coord[i][0], coord[i][1], c='r')
 
-plt.show()
+    colors = {K[k]: list(mcolors.TABLEAU_COLORS.values())[k] for k in range(len(K))}
+
+    for (i, j, k) in edges:
+        plt.plot([coord[i][0], coord[j][0]], [coord[i][1], coord[j][1]], colors[k])
+
+    plt.show()
+else:
+    print('no feasible solution found.')
