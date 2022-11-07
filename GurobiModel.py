@@ -142,17 +142,12 @@ o = m.addVars(A, K, S, vtype=GRB.BINARY, name='o')
 var_list = [x, y, t, tw, z, s, p, pl, pf, ps, o]
 
 # subject to constraints
+# network flow
 m.addConstrs((gp.quicksum(x[i, j, k] for i in V if (i, j) in A for k in K) == 1 for j in C),
              name='only one visit per customer')
-m.addConstrs((gp.quicksum(y[i, k, w] for k in K) == q[i][w] for i in C for w in W), name='demand fulfillment')
-m.addConstrs((gp.quicksum(a[w] * y[i, k, w] for w in W for i in C) <= Q[k] for k in K), name='truck capacity')
 m.addConstrs(
     (gp.quicksum(x[i, j, k] for j in V if (i, j) in A) == gp.quicksum(x[j, i, k] for j in V if (i, j) in A) for k in K
      for i in V), name='flow conservation')
-m.addConstrs((gp.quicksum(y[i, k, w] for w in W) <= Q[k] * s[i, k] for i in C for k in K), name='customer serving')
-m.addConstrs((y[i, k, w] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C for w in W),
-             name='only serve when visit')
-m.addConstrs((gp.quicksum(y[i, k, w] for i in C for w in W) <= Q[k] * z[k] for k in K))
 time_propagation = m.addConstrs(
     (t[j, k] >= t[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in CN for j
      in V if (i, j) in A for k in K), name='time propagation')
@@ -164,18 +159,21 @@ m.addConstrs((t[i, k] <= Tw_max * gp.quicksum(x[i, j, k] for j in V if (i, j) in
              name='time to 0')
 m.addConstrs((tw[i, k] <= Tw_max * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for i in D for k in K),
              name='wait time to 0')
-m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k] - n_d * pf[i, j, k]) for (i, j) in A) <= Td_max for k in K),
-             name='max driving time')
-m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k]) for (i, j) in A) <= Td_max for k in K),
-             name='max driving time')
-m.addConstrs((t[i, k] - tw[i, k] <= Tw_max for i in D for k in K), name='max working time')
-m.addConstrs((gp.quicksum(x[i, j, k] for j in V if (i, j) in A) <= 1 for k in K for i in C),
-             name='only one visit per customer')
 m.addConstrs((gp.quicksum(x[i, j, k] for i in D for j in V if (i, j) in A) == z[k] for k in K),
              name='exactly one depot')
 
-# --- platoon formation ---
+# restrictions
+m.addConstrs((gp.quicksum(y[i, k, w] for k in K) == q[i][w] for i in C for w in W), name='demand fulfillment')
+m.addConstrs((gp.quicksum(a[w] * y[i, k, w] for w in W for i in C) <= Q[k] for k in K), name='truck capacity')
+m.addConstrs((y[i, k, w] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C for w in W),
+             name='only serve when visit')
+m.addConstrs((gp.quicksum(y[i, k, w] for w in W) <= Q[k] * s[i, k] for i in C for k in K), name='customer serving')
+m.addConstrs((gp.quicksum(y[i, k, w] for i in C for w in W) <= Q[k] * z[k] for k in K))
+m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k] - n_d * pf[i, j, k]) for (i, j) in A) <= Td_max for k in K),
+             name='max driving time')
+m.addConstrs((t[i, k] - tw[i, k] <= Tw_max for i in D for k in K), name='max working time')
 
+# --- platoon formation ---
 m.addConstrs(
     (x[i, j, k] + x[i, j, l] >= 2 * gp.quicksum(p[i, j, k, l, s] for s in S) for (i, j) in A for k in K for l in K if
      l != k), name='platoon formation')
@@ -203,8 +201,8 @@ m.addConstrs((tw[g, k] <= Tw_max * gp.quicksum(o[i, j, k, s] for (i, j) in A for
              name='wait time at depot')
 
 # objective function
-# fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k] - n_f * pf[i, j, k]) for (i, j) in A for k in K)
-fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k]) for (i, j) in A for k in K)
+fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k] - n_f * pf[i, j, k]) for (i, j) in A for k in K)
+# fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k]) for (i, j) in A for k in K)
 labor_cost = gp.quicksum(c_l * (t[i, k] - tw[i, k]) for i in D for k in K)
 depreciation_cost = gp.quicksum(c_d[k] * z[k] for k in K)
 m.setObjective(fuel_cost + labor_cost + depreciation_cost, GRB.MINIMIZE)
