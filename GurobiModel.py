@@ -129,9 +129,9 @@ m.addConstrs((gp.quicksum(y[i, k, w] for w in W) <= Q[k] * s[i, k] for i in C fo
 m.addConstrs((y[i, k, w] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C for w in W),
              name='only serve when visit')
 m.addConstrs((gp.quicksum(y[i, k, w] for i in C for w in W) <= Q[k] * z[k] for k in K))
-# m.addConstrs(
-#     (t[j, k] >= t[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in CN for j
-#      in V if (i, j) in A for k in K), name='time propagation')
+time_propagation = m.addConstrs(
+    (t[j, k] >= t[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in CN for j
+     in V if (i, j) in A for k in K), name='time propagation')
 m.addConstrs(
     (t[j, k] >= tw[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in D for j
      in V if (i, j) in A for k in K), name='time propagation depot')
@@ -149,6 +149,7 @@ m.addConstrs((gp.quicksum(x[i, j, k] for j in V if (i, j) in A) <= 1 for k in K 
              name='only one visit per customer')
 m.addConstrs((gp.quicksum(x[i, j, k] for i in D for j in V if (i, j) in A) == z[k] for k in K),
              name='exactly one depot')
+
 
 # --- platoon formation ---
 
@@ -185,18 +186,26 @@ labor_cost = gp.quicksum(c_l * (t[i, k] - tw[i, k]) for i in D for k in K)
 depreciation_cost = gp.quicksum(c_d[k] * z[k] for k in K)
 m.setObjective(fuel_cost + labor_cost + depreciation_cost, GRB.MINIMIZE)
 
+
+# lazy constraints
+# for k in K:
+#     for i in CN:
+#         for j in V:
+#             if (i, j) in A:
+#                 time_propagation[i,j,k].Lazy = 1
+
 m._countLazy = 0
 m.Params.MIPGap = 0.05
-m.Params.LazyConstraints = 1
+# m.Params.LazyConstraints = 1
 m._var_list = var_list
 m._sets = sets
 m._para = parameter
-m.optimize(Classes.callback)
+m.optimize()
 
 print(f'{m._countLazy} lazy contraints were added')
 
 
-if m.Status == GRB.OPTIMAL:
+if m.Status == GRB.OPTIMAL or m.Status == GRB.INTERRUPTED:
     edges = {key: x[key].x for key in x if x[key].x > 0}
     delivered = {key: y[key].x for key in y if y[key].x > 0}
     trucks = [key for key in z if z[key].x > 0]

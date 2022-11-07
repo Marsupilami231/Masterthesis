@@ -49,10 +49,6 @@ def callback(m, where):
                m._var_list}
         vars = m.getVars()
         sol = m.cbGetSolution(vars)
-        # m.addConstrs(
-        #     (t[j, k] >= t[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in
-        #      CvN for j
-        #      in V if (i, j) in A for k in K), name='time propagation')
         for k in m._sets['K']:
             for i in m._sets['CN']:
                 for j in m._sets['V']:
