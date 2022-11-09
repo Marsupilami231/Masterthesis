@@ -8,124 +8,17 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 # import file
-file = 'Test_Daten.xlsx'
-wb = openpyxl.load_workbook(file)
+file = 'Test_Daten_2.xlsx'
+platoon = True
 
-# definition of sets and parameters
-sets = dict()
-parameter = dict()
-# products
-W = wb['Products']['A']
-a = {W[i].value: wb['Products']['B'][i].value for i in range(1, len(W))}
-W = [W[i].value for i in range(1, len(W))]
-sets['W'] = W
-parameter['a'] = a
-# customers
-C = wb['Customers']['A']
-coord_cus = {C[i].value: [wb['Customers']['B'][i].value, wb['Customers']['C'][i].value] for i in range(1, len(C))}
-q = {C[i].value: {W[w]: float(wb['Customers']['D'][i].value.split(';')[w]) for w in range(len(W))} for i in
-     range(1, len(C))}
-t_s = {C[i].value: wb['Customers']['E'][i].value for i in range(1, len(C))}
-C = [C[i].value for i in range(1, len(C))]
 
-parameter['q'] = q
-sets['C'] = C
-
-# auxiliary nodes
-N = wb['Nodes']['A']
-coord_nod = {N[i].value: [wb['Nodes']['B'][i].value, wb['Nodes']['C'][i].value] for i in range(1, len(N))}
-N = [N[i].value for i in range(1, len(N))]
-t_s.update({i: 0 for i in N})
-sets['N'] = N
-
-# depots
-D = wb['Depots']['A']
-coord_dep = {D[i].value: [wb['Depots']['B'][i].value, wb['Depots']['C'][i].value] for i in range(1, len(D))}
-D = [D[i].value for i in range(1, len(D))]
-t_s.update({i: 0 for i in D})
-sets['D'] = D
-parameter['t_s'] = t_s
-# all vertices combined
-V = C + N + D
-CN = C + N
-sets['V'] = V
-sets['CN'] = CN
-
-# Trucks
-K = wb['Trucks']['A']  # ID
-v = {K[i].value: wb['Trucks']['B'][i].value for i in range(1, len(K))}  # velocity
-c_d = {K[i].value: wb['Trucks']['C'][i].value for i in range(1, len(K))}  # depreciation cost
-Q = {K[i].value: wb['Trucks']['D'][i].value for i in range(1, len(K))}  # capacity
-c_f = {K[i].value: wb['Trucks']['E'][i].value for i in range(1, len(K))}  # fuel cost
-K = [K[i].value for i in range(1, len(K))]
-parameter['c_d'] = c_d
-parameter['Q'] = Q
-parameter['c_f'] = c_f
-parameter['v'] = v
-sets['K'] = K
-
-# sizes
-S = wb['Sizes']['A']
-S = [S[i].value for i in range(1, len(S))]  # platoon sizes
-sets['S'] = S
-
-# right now we take all arcs
-coord = coord_cus.copy()
-coord.update(coord_nod)
-coord.update(coord_dep)
-
-# customers = list(product(CN, CN))
-# D_leave = list(product(D, CN))
-# D_arrive = list(product(CN, D))
-# A = customers + D_arrive + D_leave
-# d = {(i, j): Classes.calc_distance(coord[i], coord[j]) for (i, j) in A if i != j}
-# A = list(d.keys())
-# del customers, D_arrive, D_leave
-sh = wb['Arcs']
-
-A = [(sh['A'][r].value, sh['A'][c].value) for r in range(1, len(sh['A'])) for c in
-     range(1, len(sh['A'])) if sh[r + 1][c].value == 1]
-# if used with 'A' as column identifier column comes first; if numbers used, the row comes first
-
-d = {(i, j): Classes.calc_distance(coord[i], coord[j]) for (i, j) in A}
-sets['A'] = A
-parameter['d'] = d
-
-# plot network
-for i in D:
-    plt.scatter(coord[i][0], coord[i][1], c='b')
-
-for i in C:
-    plt.scatter(coord[i][0], coord[i][1], c='g')
-
-for i in N:
-    plt.scatter(coord[i][0], coord[i][1], c='r')
-
-for (i, j) in A:
-    plt.plot([coord[i][0], coord[j][0]], [coord[i][1], coord[j][1]], 'y')
-
-plt.show()
-
-# definition of parameters
-K_max = wb['Others']['B'][0].value
-Tw_max = wb['Others']['B'][1].value
-Td_max = wb['Others']['B'][2].value
-n_f = wb['Others']['B'][3].value  # fuel saving factor
-n_d = wb['Others']['B'][4].value  # driving relief factor
-c_l = wb['Others']['B'][5].value  # labor cost
-
-parameter['K_max'] = K_max
-parameter['Tw_max'] = Tw_max
-parameter['Td_max'] = Td_max
-parameter['n_f'] = n_f
-parameter['n_d'] = n_d
-parameter['c_l'] = c_l
+W, D, C, N, V, CN, K, S, A, c_d, Q, c_f, v, d, a, q, K_max, Tw_max, Td_max, n_f, n_d, c_l, t_s, coord, sets, parameter = Classes.read_data(file)
 
 demand = {w: sum([q[i][w] for i in C]) for w in W}
 total_demand = sum([demand[w] * a[w] for w in W])
 # definition of variables
 m = gp.Model('VRP_TPMDSD')
-
+print(A)
 x = m.addVars(A, K, vtype=GRB.BINARY, name='x')
 y = m.addVars(C, K, W, vtype=GRB.CONTINUOUS, lb=0, name='y')
 t = m.addVars(V, K, vtype=GRB.CONTINUOUS, lb=0, name='t')
@@ -174,31 +67,32 @@ m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k] - n_d * pf[i, j, k]) for 
 m.addConstrs((t[i, k] - tw[i, k] <= Tw_max for i in D for k in K), name='max working time')
 
 # --- platoon formation ---
-m.addConstrs(
-    (x[i, j, k] + x[i, j, l] >= 2 * gp.quicksum(p[i, j, k, l, s] for s in S) for (i, j) in A for k in K for l in K if
-     l != k), name='platoon formation')
-m.addConstrs(
-    (t[i, k] - t[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in CN for j in V if (i, j) in A
-     for k in K for l in K if k != l), name='start time of platoon')
-m.addConstrs(
-    (tw[i, k] - tw[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in D for j in V if (i, j) in A
-     for k in K for l in K if k != l), name='start time of platoon')
-m.addConstrs((p[i, j, k, l, s] == p[i, j, l, k, s] for (i, j) in A for k in K for l in K if k != l for s in
-              S), name='pairwise platoons')
-m.addConstrs(
-    ((s - 1) * o[i, j, k, s] == gp.quicksum(p[i, j, k, l, s] for l in K if k != l) for (i, j) in A for k in K for s in
-     S), name='size of platoon')
-m.addConstrs((gp.quicksum(o[i, j, k, s] for s in S) <= 1 for (i, j) in A for k in K), name='only one platoon per arc')
-m.addConstrs((s * ps[i, j, s] == gp.quicksum(o[i, j, k, s] for k in K) for (i, j) in A for s in S),
-             name='size of platoon')
-m.addConstrs((gp.quicksum(pl[i, j, k, s] for k in K) == ps[i, j, s] for (i, j) in A for s in S),
-             name='number platoon leader')
-m.addConstrs((pl[i, j, k, s] <= o[i, j, k, s] for (i, j) in A for k in K for s in S), name='platoon leader')
-m.addConstrs((pf[i, j, k] <= gp.quicksum(o[i, j, k, s] for s in S) for (i, j) in A for k in K), name='platoon follower')
-m.addConstrs((pf[i, j, k] + gp.quicksum(pl[i, j, k, s] for s in S) <= 1 for (i, j) in A for k in K),
-             name='position in platoon')
-m.addConstrs((tw[g, k] <= Tw_max * gp.quicksum(o[i, j, k, s] for (i, j) in A for s in S) for g in D for k in K),
-             name='wait time at depot')
+if platoon == True:
+    m.addConstrs(
+        (x[i, j, k] + x[i, j, l] >= 2 * gp.quicksum(p[i, j, k, l, s] for s in S) for (i, j) in A for k in K for l in K if
+         l != k), name='platoon formation')
+    m.addConstrs(
+        (t[i, k] - t[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in CN for j in V if (i, j) in A
+         for k in K for l in K if k != l), name='start time of platoon')
+    m.addConstrs(
+        (tw[i, k] - tw[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in D for j in V if (i, j) in A
+         for k in K for l in K if k != l), name='start time of platoon')
+    m.addConstrs((p[i, j, k, l, s] == p[i, j, l, k, s] for (i, j) in A for k in K for l in K if k != l for s in
+                  S), name='pairwise platoons')
+    m.addConstrs(
+        ((s - 1) * o[i, j, k, s] == gp.quicksum(p[i, j, k, l, s] for l in K if k != l) for (i, j) in A for k in K for s in
+         S), name='size of platoon')
+    m.addConstrs((gp.quicksum(o[i, j, k, s] for s in S) <= 1 for (i, j) in A for k in K), name='only one platoon per arc')
+    m.addConstrs((s * ps[i, j, s] == gp.quicksum(o[i, j, k, s] for k in K) for (i, j) in A for s in S),
+                 name='size of platoon')
+    m.addConstrs((gp.quicksum(pl[i, j, k, s] for k in K) == ps[i, j, s] for (i, j) in A for s in S),
+                 name='number platoon leader')
+    m.addConstrs((pl[i, j, k, s] <= o[i, j, k, s] for (i, j) in A for k in K for s in S), name='platoon leader')
+    m.addConstrs((pf[i, j, k] <= gp.quicksum(o[i, j, k, s] for s in S) for (i, j) in A for k in K), name='platoon follower')
+    m.addConstrs((pf[i, j, k] + gp.quicksum(pl[i, j, k, s] for s in S) <= 1 for (i, j) in A for k in K),
+                 name='position in platoon')
+    m.addConstrs((tw[g, k] <= Tw_max * gp.quicksum(o[i, j, k, s] for (i, j) in A for s in S) for g in D for k in K),
+                 name='wait time at depot')
 
 # objective function
 fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k] - n_f * pf[i, j, k]) for (i, j) in A for k in K)
@@ -265,12 +159,15 @@ if m.Status == GRB.OPTIMAL or m.Status == GRB.INTERRUPTED:
 
     for i in D:
         plt.scatter(coord[i][0], coord[i][1], c='b')
+        plt.text(coord[i][0], coord[i][1], i, c='b')
 
     for i in C:
         plt.scatter(coord[i][0], coord[i][1], c='g')
+        plt.text(coord[i][0], coord[i][1], i, c='g')
 
     for i in N:
         plt.scatter(coord[i][0], coord[i][1], c='r')
+        plt.text(coord[i][0], coord[i][1], i, c='r')
 
     colors = {K[k]: list(mcolors.TABLEAU_COLORS.values())[k] for k in range(len(K))}
     width = {K[k]: (len(K) - k) / 2 for k in range(len(K))}
