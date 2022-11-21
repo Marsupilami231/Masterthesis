@@ -90,7 +90,7 @@ def read_data(path):
     N = wb['Nodes']['A']
     coord_nod = {N[i].value: [wb['Nodes']['B'][i].value, wb['Nodes']['C'][i].value] for i in range(1, len(N))}
     N = [N[i].value for i in range(1, len(N))]
-    t_s.update({i: 0 for i in N})
+
 
     # depots
     D = wb['Depots']['A']
@@ -115,7 +115,6 @@ def read_data(path):
 
     # all coordinates in one dict
     coord = coord_cus.copy()
-    coord.update(coord_nod)
     coord.update(coord_dep)
 
     # Arcs
@@ -123,6 +122,28 @@ def read_data(path):
     A = [(sh['A'][r].value, sh['A'][c].value) for r in range(1, len(sh['A'])) for c in
          range(1, len(sh['A'])) if sh[r + 1][c].value == 1]
     # if used with 'A' as column identifier column comes first; if numbers used, the row comes first
+
+    # copy auxiliary nodes
+    N_copy = []
+    counters = []
+    for n in N:
+        counter = 0
+        for (i, j) in A:
+            if j == n:
+                counter += 1
+                N_copy.append(f'{n}_{counter}')
+        counters.append(counter)
+    N = N_copy
+    # update parameter of nodes
+    t_s.update({i: 0 for i in N})
+    coord_node_copied = {n: coord_nod[n[:3]] for n in N}
+    coord.update(coord_node_copied)  # all coordinates
+    # update Sets
+    V = C + N + D
+    CN = C + N
+    A = [(i, j) for i in V for j in V if (i[:3], j[:3]) in A]
+
+    # calculate distances
     d = {(i, j): calc_distance(coord[i], coord[j]) for (i, j) in A}
 
     # single parameters

@@ -6,7 +6,14 @@ file = 'Test_Daten_2.xlsx'
 
 W, D, C, N, V, CN, K, S, A, c_d, Q, c_f, v, d, a, q, K_max, Tw_max, Td_max, n_f, n_d, c_l, t_s, coord, sets, parameter= Classes.read_data(file)
 
-print(coord)
+
+print(f'Number of customers: {len(C)}')
+print(f'Number of Depots: {len(D)}')
+print(f'Number of Nodes: {len(N)}')
+print(f'Number of arcs: {len(A)}')
+
+
+
 # plot network
 for i in D:
     plt.scatter(coord[i][0], coord[i][1], c='b')
@@ -24,3 +31,4 @@ for (i, j) in A:
     plt.plot([coord[i][0], coord[j][0]], [coord[i][1], coord[j][1]], 'y')
 
 plt.show()
+

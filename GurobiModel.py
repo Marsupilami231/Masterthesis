@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 
 # import file
 file = 'Test_Daten_2.xlsx'
-platoon = True
+platoon = False
 
 
 W, D, C, N, V, CN, K, S, A, c_d, Q, c_f, v, d, a, q, K_max, Tw_max, Td_max, n_f, n_d, c_l, t_s, coord, sets, parameter = Classes.read_data(file)
@@ -36,7 +36,7 @@ var_list = [x, y, t, tw, z, s, p, pl, pf, ps, o]
 
 # subject to constraints
 # network flow
-m.addConstrs((gp.quicksum(x[i, j, k] for i in V if (i, j) in A for k in K) == 1 for j in C),
+m.addConstrs((gp.quicksum(x[i, j, k] for i in V if (i, j) in A for k in K) <= 1 for j in C),
              name='only one visit per customer')
 m.addConstrs(
     (gp.quicksum(x[i, j, k] for j in V if (i, j) in A) == gp.quicksum(x[j, i, k] for j in V if (i, j) in A) for k in K
@@ -61,13 +61,13 @@ m.addConstrs((gp.quicksum(a[w] * y[i, k, w] for w in W for i in C) <= Q[k] for k
 m.addConstrs((y[i, k, w] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C for w in W),
              name='only serve when visit')
 m.addConstrs((gp.quicksum(y[i, k, w] for w in W) <= Q[k] * s[i, k] for i in C for k in K), name='customer serving')
-m.addConstrs((gp.quicksum(y[i, k, w] for i in C for w in W) <= Q[k] * z[k] for k in K))
+m.addConstrs((gp.quicksum(s[i, k] for i in C) <= Q[k] * z[k] for k in K), name='truck usage')
 m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k] - n_d * pf[i, j, k]) for (i, j) in A) <= Td_max for k in K),
              name='max driving time')
 m.addConstrs((t[i, k] - tw[i, k] <= Tw_max for i in D for k in K), name='max working time')
 
 # --- platoon formation ---
-if platoon == True:
+if platoon:
     m.addConstrs(
         (x[i, j, k] + x[i, j, l] >= 2 * gp.quicksum(p[i, j, k, l, s] for s in S) for (i, j) in A for k in K for l in K if
          l != k), name='platoon formation')
@@ -96,7 +96,6 @@ if platoon == True:
 
 # objective function
 fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k] - n_f * pf[i, j, k]) for (i, j) in A for k in K)
-# fuel_cost = gp.quicksum(c_f[k] * d[i, j] * (x[i, j, k]) for (i, j) in A for k in K)
 labor_cost = gp.quicksum(c_l * (t[i, k] - tw[i, k]) for i in D for k in K)
 depreciation_cost = gp.quicksum(c_d[k] * z[k] for k in K)
 m.setObjective(fuel_cost + labor_cost + depreciation_cost, GRB.MINIMIZE)
