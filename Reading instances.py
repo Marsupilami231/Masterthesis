@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import openrouteservice as ors
 from openrouteservice.directions import directions
@@ -54,8 +56,8 @@ class visit:
 def haversine(start, end):
     long1 = radians(start.long)
     long2 = radians(end.long)
-    lat1 = radians(start.long)
-    lat2 = radians(end.long)
+    lat1 = radians(start.lat)
+    lat2 = radians(end.lat)
 
     dlong = long2 - long1
     dlat = lat2 - lat1
@@ -65,6 +67,63 @@ def haversine(start, end):
     dist = 2 * r * asin(sqrt(a))
 
     return dist
+
+
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * 180 / math.pi
+
+
+def find_near_arcs(nodes):
+    distance = {s: {e: haversine(nodes[s], nodes[e]) for e in nodes if e != s if haversine(nodes[s], nodes[e]) < 30} for s in nodes}
+    arcs = dict()
+    for start, distance_from_start in distance.items():
+        arcs[start] = []
+        min_dist = min(distance_from_start,
+                       key=distance_from_start.get)  # find the node with the shortest distance to start node
+        arcs[start].append(min_dist)  # add the arc with the shortest distance to the dict of all arcs
+        del distance_from_start[min_dist]  # delete the distance just added
+        while len(distance_from_start) > 0:
+            add = True
+            cutoff = 100
+            min_dist = min(distance_from_start,
+                           key=distance_from_start.get)  # find node with the next shortest distance
+            new_vec = (nodes[min_dist].long - nodes[start].long,
+                       nodes[min_dist].lat - nodes[start].lat)  # vector for new possible arc
+            for end in arcs[start]:  # cycle through existing arcs
+                old_vec = (nodes[end].long - nodes[start].long, nodes[end].lat - nodes[start].lat)
+                angle = angle_between(new_vec, old_vec)
+                if angle * math.sqrt(distance[start][min_dist]) < cutoff:  # check if the new arc is too close to exisiting arc
+                    add = False  # if yes, dont add it
+                    break  # one failure is enough to not add it
+            if add:
+                arcs[start].append(min_dist)  # add only if no other similar arcs
+            del distance_from_start[min_dist]  # delete the checked arc
+
+    return arcs
+
+    # min_distance = {n: min(list(distance[n].values())) for n in nodes}
+    # max_distance = {n: max(list(distance[n].values())) for n in nodes}
+    # max_min_distance = max(list(min_distance.values()))
+    # min_max_distance = min(list(max_distance.values()))
+    # arcs = []
+    # for start in distance:
+    #     for end in distance[start]:
+    #         v1 = (nodes[end].long - nodes[start].long, nodes[end].lat - nodes[start].lat)
+    #         for end2 in distance[start]:
+    #             v2 = (nodes[end2].long - nodes[start].long, nodes[end2].lat - nodes[start].lat)
+    #             angle = angle_between(v1, v2)
+    #             if angle * distance[start][end2] / 100:
+    #                 arcs.append(())
+    # return arcs
 
 
 df = pd.read_csv('standorte_7.csv', index_col=0)
@@ -80,30 +139,37 @@ min_lat = min(list(nodes_dict['Latitude'].values()))
 mid_long = (max_long + min_long) / 2
 mid_lat = (max_lat + min_lat) / 2
 loc = (mid_lat, mid_long)
-m = folium.Map(location=loc, tiles='cartodbpositron', zoom_start=8)
+fmap = folium.Map(location=loc, tiles='cartodbpositron', zoom_start=8)
 
 for n in nodes.values():
-    folium.Marker(location=(n.lat, n.long),
-                  tooltip=folium.map.Tooltip(f'<p><b>Customer: {n.ID}</b><br>long: {round(n.long,3)}<br>lat: {round(n.lat,3)}<br>demand: {n.q}<br>serv time: {n.st}</p>'),
-                  icon=folium.Icon(color='green')
-                  ).add_to(m)
+    if n.ID in [1, 5111]:
+        col = 'red'
+    else:
+        col = 'green'
 
+    folium.Marker(location=(n.lat, n.long),
+                  tooltip=folium.map.Tooltip(
+                      f'<p><b>Customer: {n.ID}</b><br>long: {round(n.long, 3)}<br>lat: {round(n.lat, 3)}<br>demand: {n.q}<br>serv time: {n.st}</p>'),
+                  icon=folium.Icon(color=col)
+                  ).add_to(fmap)
+
+arcs = find_near_arcs(nodes)
+
+for start in arcs:
+    for end in arcs[start]:
+        folium.PolyLine([tuple([nodes[start].lat, nodes[start].long]), tuple([nodes[end].lat, nodes[end].long])], color='blue').add_to(fmap)
 
 sum_edges = sum(list(range(1, len(nodes))))
 edges = list(product(nodes, nodes))
 num_edges = len(edges)
 
-distance = {s: {e: haversine(nodes[s], nodes[e]) for e in nodes if e != s} for s in nodes}
-min_distance = {n: min(list(distance[n].values())) for n in nodes}
-max_distance = {n: max(list(distance[n].values())) for n in nodes}
-max_min_distance = max(list(min_distance.values()))
-min_max_distance = min(list(max_distance.values()))
-
 coordinates = []
 for n in nodes.values():
     coordinates.append([n.long, n.lat])
 
-driving_time = distance_matrix(client, coordinates)
+coordinates_test = coordinates[0:20]
 
-m.save("map.html")
+driving_time = distance_matrix(client, locations=coordinates_test, destinations=[0])
+
+fmap.save("map.html")
 print('The End!')
