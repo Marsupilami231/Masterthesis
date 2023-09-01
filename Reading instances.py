@@ -10,7 +10,7 @@ import osmnx as ox
 import geopy
 from math import radians, cos, sin, asin, sqrt
 from itertools import product
-
+from Classes import Node
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
@@ -21,23 +21,24 @@ import os
 from datetime import datetime
 
 client = ors.Client(key='5b3ce3597851110001cf62482ac01804d2d6434a8cdd87785bfb541a')  # Specify your personal API key
+max_num_matrix = 3500  # max number of elements in the distance matrix
 locator = geopy.Nominatim(user_agent='TUM_TA_ph')
 
 
-class Node:
-
-    def __init__(self, ID, long, lat, q=0, st=0):
-        self.ID = ID
-        self.long = long
-        self.lat = lat
-        self.q = q
-        self.st = st
-
-    def __str__(self):
-        return f'(Node: ID:{self.ID}, long:{self.long}, lat:{self.lat}, demand:{self.q}, service time:{self.st})'
-
-    def __repr__(self):
-        return f'(Node: ID:{self.ID}, long:{self.long}, lat:{self.lat}, demand:{self.q}, service time:{self.st})'
+# class Node:
+#
+#     def __init__(self, ID, long, lat, q=0, st=0):
+#         self.ID = ID
+#         self.long = long
+#         self.lat = lat
+#         self.q = q
+#         self.st = st
+#
+#     def __str__(self):
+#         return f'(Node: ID:{self.ID}, long:{self.long}, lat:{self.lat}, demand:{self.q}, service time:{self.st})'
+#
+#     def __repr__(self):
+#         return f'(Node: ID:{self.ID}, long:{self.long}, lat:{self.lat}, demand:{self.q}, service time:{self.st})'
 
 
 class visit:
@@ -169,7 +170,21 @@ for n in nodes.values():
 
 coordinates_test = coordinates[0:20]
 
-driving_time = distance_matrix(client, locations=coordinates_test, destinations=[0])
+distances = dict()
+nodes_list = list(nodes.keys())
+step = math.floor(max_num_matrix / len(coordinates))
+for i in range(0, len(coordinates), step):
+    if i + step >= len(coordinates):
+        end = len(coordinates) - 1
+    else:
+        end = i + step
+    dest = list(range(i, end+1))
+    driving_distance = distance_matrix(client, profile='driving-hgv', metrics=['distance'], units='km', locations=coordinates, destinations=dest)
+    new_distances = {(nodes_list[start], nodes_list[end]): driving_distance['distances'][start][end] for start in range(len(nodes_list)) for end in dest}
+    distances.update(new_distances)
 
+new_df = pd.DataFrame(data=distances, columns=['Start', 'End', 'Distance'])
+
+print(driving_distance)
 fmap.save("map.html")
 print('The End!')

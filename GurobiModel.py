@@ -11,19 +11,17 @@ import matplotlib.colors as mcolors
 file = 'Test_Daten_2.xlsx'
 platoon = False
 
+D, C, N, V, CN, K, S, A, c_d, Q, c_f, v, d, a, q, K_max, Tw_max, Td_max, n_f, n_d, c_l, t_s, coord, sets, parameter = Classes.read_data(file)
 
-W, D, C, N, V, CN, K, S, A, c_d, Q, c_f, v, d, a, q, K_max, Tw_max, Td_max, n_f, n_d, c_l, t_s, coord, sets, parameter = Classes.read_data(file)
+total_demand = sum([q[i] for i in C])
 
-demand = {w: sum([q[i][w] for i in C]) for w in W}
-total_demand = sum([demand[w] * a[w] for w in W])
 # definition of variables
 m = gp.Model('VRP_TPMDSD')
 print(A)
 x = m.addVars(A, K, vtype=GRB.BINARY, name='x')
-y = m.addVars(C, K, W, vtype=GRB.CONTINUOUS, lb=0, name='y')
+y = m.addVars(C, K, vtype=GRB.CONTINUOUS, lb=0, name='y')
 t = m.addVars(V, K, vtype=GRB.CONTINUOUS, lb=0, name='t')
 tw = m.addVars(D, K, vtype=GRB.CONTINUOUS, lb=0, name='tw')
-# u = m.addVars(V, K, vtype=GRB.CONTINUOUS, lb=0)
 z = m.addVars(K, vtype=GRB.BINARY, name='z')
 s = m.addVars(V, K, vtype=GRB.BINARY, name='s')
 p = m.addVars(A, K, K, S, vtype=GRB.BINARY, name='p')
@@ -48,7 +46,7 @@ m.addConstrs(
     (t[j, k] >= tw[i, k] + x[i, j, k] * d[i, j] / v[k] + s[j, k] * t_s[j] - Tw_max * (1 - x[i, j, k]) for i in D for j
      in V if (i, j) in A for k in K), name='time propagation depot')
 m.addConstrs((tw[i, k] <= t[i, k] for i in D for k in K), name='limit for waiting time')
-m.addConstrs((t[i, k] <= Tw_max * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for i in V for k in K),
+m.addConstrs((t[i, k] <= 2 * Tw_max * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for i in V for k in K),
              name='time to 0')
 m.addConstrs((tw[i, k] <= Tw_max * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for i in D for k in K),
              name='wait time to 0')
@@ -56,11 +54,11 @@ m.addConstrs((gp.quicksum(x[i, j, k] for i in D for j in V if (i, j) in A) == z[
              name='exactly one depot')
 
 # restrictions
-m.addConstrs((gp.quicksum(y[i, k, w] for k in K) == q[i][w] for i in C for w in W), name='demand fulfillment')
-m.addConstrs((gp.quicksum(a[w] * y[i, k, w] for w in W for i in C) <= Q[k] for k in K), name='truck capacity')
-m.addConstrs((y[i, k, w] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C for w in W),
+m.addConstrs((gp.quicksum(y[i, k] for k in K) == q[i] for i in C), name='demand fulfillment')
+m.addConstrs((gp.quicksum(y[i, k]  for i in C) <= Q[k] for k in K), name='truck capacity')
+m.addConstrs((y[i, k] <= Q[k] * gp.quicksum(x[i, j, k] for j in V if (i, j) in A) for k in K for i in C),
              name='only serve when visit')
-m.addConstrs((gp.quicksum(y[i, k, w] for w in W) <= Q[k] * s[i, k] for i in C for k in K), name='customer serving')
+m.addConstrs((y[i, k] <= Q[k] * s[i, k] for i in C for k in K), name='customer serving')
 m.addConstrs((gp.quicksum(s[i, k] for i in C) <= Q[k] * z[k] for k in K), name='truck usage')
 m.addConstrs((gp.quicksum(d[i, j] / v[k] * (x[i, j, k] - n_d * pf[i, j, k]) for (i, j) in A) <= Td_max for k in K),
              name='max driving time')
@@ -75,7 +73,7 @@ if platoon:
         (t[i, k] - t[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in CN for j in V if (i, j) in A
          for k in K for l in K if k != l), name='start time of platoon')
     m.addConstrs(
-        (tw[i, k] - tw[i, l] <= Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in D for j in V if (i, j) in A
+        (tw[i, k] - tw[i, l] <= 2 * Tw_max * (1 - gp.quicksum(p[i, j, k, l, s] for s in S)) for i in D for j in V if (i, j) in A
          for k in K for l in K if k != l), name='start time of platoon')
     m.addConstrs((p[i, j, k, l, s] == p[i, j, l, k, s] for (i, j) in A for k in K for l in K if k != l for s in
                   S), name='pairwise platoons')
@@ -122,10 +120,11 @@ if m.Status == GRB.OPTIMAL or m.Status == GRB.INTERRUPTED:
     delivered = {key: y[key].x for key in y if y[key].x > 0.5}
     trucks = [key for key in z if z[key].x > 0.5]
 
-    print(fuel_cost.getValue())
-    print(labor_cost.getValue())
-    print(depreciation_cost.getValue())
+    print(f'fuel cost: {fuel_cost.getValue()}')
+    print(f'labor cost: {labor_cost.getValue()}')
+    print(f'depecreation cost: {depreciation_cost.getValue()}')
 
+    print('Used Arcs:')
     for k in K:
         for (i, j) in A:
             if x[i, j, k].x >= 0.5:

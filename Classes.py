@@ -6,7 +6,6 @@ import openpyxl
 
 class Node:
 
-    # this class is used for
     def __init__(self, ID, x, y, q=0, st=0):
         self.ID = ID
         self.x = x
