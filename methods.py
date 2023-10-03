@@ -17,7 +17,7 @@ file_edges = 'edges.csv'
 
 # --- definition of functions --- #
 def pythagoras(start, end):
-    # calculate the pythagoras distance between two nodes
+    # calculate the pythagoras distance between two nodes, both inputs should be Coord
     dx = start.x - end.x
     dy = start.y - end.y
     dist = math.sqrt(dx ** 2 + dy ** 2)
@@ -47,6 +47,7 @@ def dijkstra(_distance, _starting_node):
 
 
 def calc_angle(vector1, vector2):
+    # vector needs to be a np.array
     vector1_norm = vector1 / np.linalg.norm(vector1)  # normalizes vector
     vector2_norm = vector2 / np.linalg.norm(vector2)
     # np.dot: dot product of two vectors; np.clip: minimal -1, maximal, 1
@@ -110,8 +111,8 @@ def create_platoons():
         Platoon_arcs[i][j] = []
     # find possible platoons
     for r in R.values():
-        for i in range(len(r.exact_tour)-1):
-            Platoon_arcs[r.exact_tour[i]][r.exact_tour[i+1]].append(r.ID)
+        for i in range(len(r.exact_tour) - 1):
+            Platoon_arcs[r.exact_tour[i]][r.exact_tour[i + 1]].append(r.ID)
 
     for r in R.values():
         r.platoon = [0] * (len(r.exact_tour) - 1)
@@ -127,23 +128,40 @@ def create_platoons():
                 for other_route in route_ids:
                     if other_route is not latest_route:
                         time_diff = leaving_times[latest_route] - leaving_times[other_route]
-                        if time_diff >= 0: # if time difference is equal 0, both tours can already form a platoon
+                        if time_diff >= 0:  # if time difference is equal 0, both tours can already form a platoon
                             R[latest_route].platoon[start_index[latest_route]] = 1
                             R[other_route].platoon[start_index[other_route]] = 1
                             if time_diff > 0:
-                            # if time diff is greater 0, the leaving times of the earlier tour have to be adjusted
-                                rest_route = R[other_route].exact_tour[start_index[other_route]:]
-                                for index_later_nodes in range(len(R[other_route].exact_tour[start_index[other_route]:])):  # iterate over the nodes, that are later than the start node of the platooning arc
+                                # if time diff is greater 0, the leaving times of the earlier tour have to be adjusted
+                                # rest_route = R[other_route].exact_tour[start_index[other_route]:]
+                                for index_later_nodes in \
+                                        range(len(R[other_route].exact_tour[start_index[other_route]:])):
+                                    # iterate over the nodes, that are later than the start node of the platooning arc
                                     # the first node to be updated is the start node (index_late_nodes = 0)
-                                    R[other_route].leaving_times[start_index[other_route] + index_later_nodes] += time_diff
+                                    R[other_route].leaving_times[
+                                        start_index[other_route] + index_later_nodes] += time_diff
                                 # routes[latest_route].driving_time = routes[latest_route].leaving_times[-1]
                                 # routes[other_route].driving_time = routes[other_route].leaving_times[-1]
                         else:
-                            print('Here is a problem: Time difference between the latest route and another should be greater or equal 0!')
+                            print(
+                                'Here is a problem: Time difference between the latest route '
+                                'and another should be greater or equal 0!')
                 del other_route
         del end, route_ids
     del start, end_val
 
+
+def create_gene_from_tours():
+    _gene_code = []
+    _depots = []
+    for r in R.values():
+        for i in r.main_tour[1:-1]:
+            _gene_code.append(i)
+            _depots.append(r.main_tour[0])
+        del i
+    del r
+    _gene = Genecode(gene=_gene_code, depot_allocation=_depots)
+    return _gene
 
 
 # --- Definition of Classes --- #
@@ -151,14 +169,14 @@ def create_platoons():
 class Coord:
 
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
+        self.x = float(x)  # lon
+        self.y = float(y)  # lat
 
     def __str__(self):
-        return f'x:{self.x} , y:{self.y}'
+        return f'lon:{self.x} , lat:{self.y}'
 
     def __repr__(self):
-        return f'x:{self.x} , y:{self.y}'
+        return f'lon:{self.x} , lat:{self.y}'
 
 
 class Route:
@@ -311,6 +329,7 @@ class Route:
         self.index_main_on_exact[-1] = len(self.exact_tour) - 1
         # depot is twice in the list, always first index is found, so second time has to be corrected
 
+
 class Node:
 
     def __init__(self, node_id, x, y, category, q=0, st=0):
@@ -335,20 +354,92 @@ class Visit:
 
     def __init__(self, route, node, leave_time, successor=None, predecessor=None, earliest_time=0, latest_time=None):
         if latest_time is None:
-            latest_time = T_max
+            self.latest_time = T_max
+        else:
+            self.latest_time = latest_time
         self.route = route
         self.node = node
         self.leave_time = leave_time
         self.predecessor = predecessor
         self.successor = successor
         self.earliest_time = earliest_time
-        self.latest_time = latest_time
 
     def __str__(self):
         return f'Node {self.node} on route {self.route} leaving at {self.leave_time} to {self.successor}.'
 
     def __repr__(self):
         return f'Node {self.node} on route {self.route} leaving at {self.leave_time} to {self.successor}.'
+
+
+class Genecode:
+
+    def __init__(self, gene, depot_allocation, travel_cost=None):
+        self.gene = gene
+        self.depot_allocation = depot_allocation
+        if travel_cost is None:
+            self.travel_cost = Dist_fwa
+        else:
+            self.travel_cost = travel_cost
+
+    def __str__(self):
+        return f'Gene: {self.gene} with depots {self.depot_allocation}.'
+
+    def __repr__(self):
+        return f'Gene: {self.gene} with depots {self.depot_allocation}.'
+
+    def recreate_tour(self):
+        for d in D:
+            # create list of all visited customers for each depot
+            _gene_depot = []
+            for c_ind in range(len(self.gene)):
+                if self.depot_allocation[c_ind] == d:
+                    _gene_depot.append(self.gene[c_ind])
+            del c_ind
+
+            # create network
+            _network = {i: dict() for i in [d] + _gene_depot}  # depot is possible starting node
+
+            for c1_ind in range(len(_gene_depot)):
+                c1 = _gene_depot[c1_ind]
+                # it´s easier to find c with the index than to find the index with c,
+                # since c could be twice or more in the list
+                _demand = 0
+                for c2_ind in range(c1_ind, len(_gene_depot)):
+                    c2 = _gene_depot[c2_ind]
+                    if _demand + V[c2].demand <= Capacity_truck:
+                        _demand += V[c2].demand
+                        # calculate the costs of the subtour
+                        _cost = 0
+
+                        if c2_ind - c1_ind == 0:
+                            # only one node in subtour
+                            _cost += self.travel_cost[d][c1]
+                            _cost += self.travel_cost[c1][d]
+
+                        for n_ind in range(c1_ind, c2_ind):
+                            n = _gene_depot[n_ind]
+                            if n == c1:
+                                # first node of subtour
+                                _cost += self.travel_cost[d][n]
+
+                            if c2_ind - c1_ind > 0:
+                                # middle node
+                                _cost += self.travel_cost[n][_gene_depot[n_ind + 1]]
+
+                            if n == _gene_depot[c2_ind]:
+                                # last node of subtour
+                                _cost += self.travel_cost[n][d]
+                        del n_ind
+
+                    else:
+                        # as soon as the demand is too high once, it will be too high for all the following nodes too
+                        break
+
+                    _network[c1][c2] = _cost
+                del c2_ind
+            del c1_ind
+            print(_network)
+        del d
 
 
 # %% ---Importing data --- %% #
@@ -481,20 +572,29 @@ else:
     print('edges read from csv-file.')
     del csvFile, lines, file_temp
 
-del file_edges, file
+del file_edges, file, new_network
 
 # find the closest node for customers and depots and add arcs to and from this node to E
 for c in CD:
     dist_cus = {n: pythagoras(V[c].coord, V[n].coord) for n in N}
-    n = min(dist_cus, key=dist_cus.get)
-    E.add((c, n))
-    E.add((n, c))
-del c, dist_cus
+    closest_node = min(dist_cus, key=dist_cus.get)
+    min_dist = dist_cus[closest_node]
+    v1 = np.array([V[c].coord.x - V[closest_node].coord.x,
+                   V[c].coord.y - V[closest_node].coord.y])
+    n = closest_node
+    while(dist_cus[n] < 2 * min_dist):
+        v2 = np.array([V[c].coord.x - V[n].coord.x,
+                       V[c].coord.y - V[n].coord.y])
+        if calc_angle(vector1=v1, vector2=v2) > 60:
+            E.add((c, n))
+            E.add((n, c))
+        del dist_cus[n]
+        n = min(dist_cus, key=dist_cus.get)
+del c, dist_cus, n
 
 # change E from set to list
 E = list(E)
 E.sort()
-
 
 # %% Distance Calculations % ##
 
@@ -507,7 +607,7 @@ Drive_time_graph = calc_driving_time(Dist_graph)
 
 # find fastest and alternative tours from any customer/depot to all other customer/depot
 Detour_factor = (Cost_factor_fuel + Cost_factor_labor / Velocity) / ((1 - Fuel_saving_factor) * Cost_factor_fuel
-                                                                         + Cost_factor_labor / Velocity)
+                                                                     + Cost_factor_labor / Velocity)
 
 # floyd warshall algorithm, incl. the path and also alternatives
 Dist_fwa = {i: {j: Dist_graph[i][j] if (i, j) in E else np.inf for j in V} for i in V}
@@ -538,7 +638,7 @@ del k
 for i in V:
     for j in V:
         Path_alt[i][j] = [alt_path for alt_path in Path_alt[i][j]
-                                   if alt_path[1] < Dist_fwa[i][j] * Detour_factor]
+                          if alt_path[1] < Dist_fwa[i][j] * Detour_factor]
 del i, j
 # visits as dict
 # created here, so it is usable in the main file as well as here
@@ -550,4 +650,3 @@ Platoon_arcs = {i: {j: [] for j in Dist_graph[i]} for i in Dist_graph}
 R = dict()
 Visits_dict = {r_ind: [] for r_ind in R}
 R_at_depot = {d: [] for d in D}
-
