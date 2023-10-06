@@ -9,6 +9,10 @@ import math
 import operator
 import numpy as np
 import csv
+from openrouteservice.directions import directions
+import openrouteservice as ors
+
+client = ors.Client(key='5b3ce3597851110001cf62482ac01804d2d6434a8cdd87785bfb541a')  # Specify your personal API key
 
 new_network = False
 file = r'C:\Git\Masterthesis\Test_Daten_Heuristik.xlsx'
@@ -18,9 +22,9 @@ file_edges = 'edges.csv'
 # --- definition of functions --- #
 def pythagoras(start, end):
     # calculate the pythagoras distance between two nodes, both inputs should be Coord
-    dx = start.x - end.x
-    dy = start.y - end.y
-    dist = math.sqrt(dx ** 2 + dy ** 2)
+    diff_lon = start.lon - end.lon
+    diff_lat = start.lat - end.lat
+    dist = math.sqrt(diff_lon ** 2 + diff_lat ** 2)
     return round(dist, 2)
 
 
@@ -164,19 +168,34 @@ def create_gene_from_tours():
     return _gene
 
 
+def distance_ors(start_lon, start_lat, end_lon, end_lat):
+
+    coordinates = ((start_lon, start_lat), (end_lon, end_lat))
+    direction_params = {'coordinates': coordinates,  # lon, lat
+                        'profile': 'driving-hgv',
+                        'format_out': 'geojson',
+                        'preference': 'shortest',
+                        'geometry': 'true'}
+    route = directions(client=client, **direction_params)
+    time.sleep(1.6)  # wait for a short time because the server only allows 40 accesses per minute
+    distance, duration = route['features'][0]['properties']['summary'].values()
+    return route, distance
+
+
 # --- Definition of Classes --- #
+
 
 class Coord:
 
-    def __init__(self, x, y):
-        self.x = float(x)  # lon
-        self.y = float(y)  # lat
+    def __init__(self, lon, lat):
+        self.lon = float(lon)  # lon = x
+        self.lat = float(lat)  # lat = y
 
     def __str__(self):
-        return f'lon:{self.x} , lat:{self.y}'
+        return f'lon:{self.lon} , lat:{self.lat}'
 
     def __repr__(self):
-        return f'lon:{self.x} , lat:{self.y}'
+        return f'lon:{self.lon} , lat:{self.lat}'
 
 
 class Route:
@@ -332,11 +351,9 @@ class Route:
 
 class Node:
 
-    def __init__(self, node_id, x, y, category, q=0, st=0):
+    def __init__(self, node_id, lon, lat, category, q=0, st=0):
         self.ID = node_id
-        self.coord = Coord(x=x, y=y)
-        # self.x = x
-        # self.y = y
+        self.coord = Coord(lon=lon, lat=lat)
         self.category = category
         self.demand = q
         self.service_time = st
@@ -521,11 +538,11 @@ if new_network:
             furthest_node = max(dist_to_j, key=dist_to_j.get)  # node that is the furthest away from current node
             del dist_to_j[furthest_node]  # remove from list of edges to check
             # vector to the furthest remaining node
-            vector_furthest = np.array([V[i].coord.x - V[furthest_node].coord.x,
-                                        V[i].coord.y - V[furthest_node].coord.y])
+            vector_furthest = np.array([V[i].coord.lon - V[furthest_node].coord.lon,
+                                        V[i].coord.lat - V[furthest_node].coord.lat])
             # angles to all the other nodes
-            angles = {j: calc_angle(vector_furthest, np.array([V[i].coord.x[0] - V[j].coord.x,
-                                                               V[i].coord.y - V[j].coord.y])) for j in dist_to_j}
+            angles = {j: calc_angle(vector_furthest, np.array([V[i].coord.lon - V[j].coord.lon,
+                                                               V[i].coord.lat - V[j].coord.lat])) for j in dist_to_j}
 
             for j in angles:
                 if abs(angles[j]) < 20:  # angle to small
@@ -579,12 +596,12 @@ for c in CD:
     dist_cus = {n: pythagoras(V[c].coord, V[n].coord) for n in N}
     closest_node = min(dist_cus, key=dist_cus.get)
     min_dist = dist_cus[closest_node]
-    v1 = np.array([V[c].coord.x - V[closest_node].coord.x,
-                   V[c].coord.y - V[closest_node].coord.y])
+    v1 = np.array([V[c].coord.lon - V[closest_node].coord.lon,
+                   V[c].coord.lat - V[closest_node].coord.lat])
     n = closest_node
-    while(dist_cus[n] < 2 * min_dist):
-        v2 = np.array([V[c].coord.x - V[n].coord.x,
-                       V[c].coord.y - V[n].coord.y])
+    while (dist_cus[n] < 2 * min_dist):
+        v2 = np.array([V[c].coord.lon - V[n].coord.lon,
+                       V[c].coord.lat - V[n].coord.lat])
         if calc_angle(vector1=v1, vector2=v2) > 60:
             E.add((c, n))
             E.add((n, c))
